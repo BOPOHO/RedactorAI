@@ -1,496 +1,163 @@
 <!DOCTYPE html>
 <html lang="ru">
-
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <title>Видеоредактор</title>
-    <style>
-        :root {
-            --bg: #0b0d10;
-            --panel: #14171c;
-            --panel2: #1b1f26;
-            --line: #262b33;
-            --accent: #ff5b3d;
-            --accent2: #3dd6c0;
-            --text: #e9ecf0;
-            --text-dim: #8a909c;
-            --track-h: 56px;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Видеоредактор</title>
+<style>
+  :root{
+    --bg:#0b0d10;
+    --panel:#14171c;
+    --panel2:#1b1f26;
+    --line:#262b33;
+    --accent:#ff5b3d;
+    --accent2:#3dd6c0;
+    --text:#e9ecf0;
+    --text-dim:#8a909c;
+    --track-h:56px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:-apple-system,Roboto,"Segoe UI",sans-serif;overscroll-behavior:none;user-select:none;}
+  #app{display:flex;flex-direction:column;height:100vh;height:100dvh;}
 
-        * {
-            box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
-        }
+  /* ---------- TOP BAR ---------- */
+  #topbar{display:flex;align-items:center;justify-content:space-between;
+    padding:10px 12px;background:var(--panel);border-bottom:1px solid var(--line);flex:0 0 auto;}
+  #topbar .brand{font-weight:700;font-size:15px;letter-spacing:.3px;}
+  #topbar .brand span{color:var(--accent);}
+  #topbar .actions{display:flex;gap:8px;}
+  .iconbtn{width:36px;height:36px;border-radius:10px;background:var(--panel2);
+    border:1px solid var(--line);display:flex;align-items:center;justify-content:center;color:var(--text);font-size:16px;}
+  .iconbtn:active{background:#23272f;}
+  .iconbtn.primary{background:var(--accent);border-color:var(--accent);color:#1a0d08;}
+  .status-dot{width:8px;height:8px;border-radius:50%;background:var(--text-dim);margin-right:6px;display:inline-block;}
+  .status-dot.ready{background:var(--accent2);}
+  #netstatus{font-size:11px;color:var(--text-dim);display:flex;align-items:center;}
 
-        html,
-        body {
-            margin: 0;
-            height: 100%;
-            background: var(--bg);
-            color: var(--text);
-            font-family: -apple-system, Roboto, "Segoe UI", sans-serif;
-            overscroll-behavior: none;
-            user-select: none;
-        }
+  /* ---------- PREVIEW ---------- */
+  #preview-wrap{flex:1 1 auto;display:flex;align-items:center;justify-content:center;
+    background:#000;position:relative;overflow:hidden;min-height:0;}
+  #previewVideo,#previewImg{max-width:100%;max-height:100%;display:none;background:#000;}
+  #emptyState{color:var(--text-dim);text-align:center;font-size:13px;padding:20px;}
+  #emptyState .big{font-size:34px;display:block;margin-bottom:10px;}
+  #playOverlay{position:absolute;width:60px;height:60px;border-radius:50%;background:rgba(0,0,0,.45);
+    display:flex;align-items:center;justify-content:center;font-size:22px;color:#fff;}
 
-        #app {
-            display: flex;
-            flex-direction: column;
-            height: 100vh;
-            height: 100dvh;
-        }
+  /* ---------- TOOL ROW ---------- */
+  #toolrow{display:flex;gap:8px;padding:10px 12px;background:var(--panel);
+    border-top:1px solid var(--line);overflow-x:auto;flex:0 0 auto;}
+  .tool{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:4px;
+    padding:8px 12px;border-radius:12px;background:var(--panel2);border:1px solid var(--line);min-width:58px;}
+  .tool .ic{font-size:18px;}
+  .tool .lb{font-size:10px;color:var(--text-dim);}
+  .tool:active{background:#23272f;}
+  .tool[disabled]{opacity:.35;}
 
-        /* ---------- TOP BAR ---------- */
-        #topbar {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 10px 12px;
-            background: var(--panel);
-            border-bottom: 1px solid var(--line);
-            flex: 0 0 auto;
-        }
+  /* ---------- TIMELINE ---------- */
+  #timeline-region{flex:0 0 auto;background:var(--panel);border-top:1px solid var(--line);}
+  #playhead-time{text-align:center;font-size:12px;color:var(--text-dim);padding:6px 0 2px;font-variant-numeric:tabular-nums;}
+  #timeline-scroll{position:relative;overflow-x:auto;overflow-y:hidden;padding:6px 0 12px;}
+  #timeline-inner{position:relative;height:calc(var(--track-h)*3 + 16px);min-width:100%;}
+  .track{position:relative;height:var(--track-h);margin-bottom:6px;border-radius:8px;background:#101317;}
+  .ruler{position:absolute;top:0;left:0;height:14px;width:100%;pointer-events:none;}
+  .clip{position:absolute;top:3px;bottom:3px;border-radius:7px;overflow:hidden;
+    background:linear-gradient(135deg,#2b3340,#1c222c);border:1px solid var(--line);
+    display:flex;align-items:center;padding:0 8px;font-size:11px;color:var(--text);white-space:nowrap;}
+  .clip.video{border-color:#3a5a78;}
+  .clip.audio{background:linear-gradient(135deg,#2c2240,#1c1730);border-color:#5b3a78;height:34px;top:11px;}
+  .clip.selected{outline:2px solid var(--accent);}
+  .clip .handle{position:absolute;top:0;bottom:0;width:10px;background:rgba(255,255,255,.12);}
+  .clip .handle.l{left:0;border-radius:7px 0 0 7px;}
+  .clip .handle.r{right:0;border-radius:0 7px 7px 0;}
+  #playhead{position:absolute;top:0;bottom:0;width:2px;background:var(--accent);z-index:8;pointer-events:none;}
+  #playhead::before{content:'';position:absolute;top:-4px;left:-9px;width:20px;height:16px;background:var(--accent);border-radius:4px;pointer-events:auto;}
+  #playhead::after{content:'';position:absolute;top:-10px;left:-14px;width:30px;height:30px;}
 
-        #topbar .brand {
-            font-weight: 700;
-            font-size: 15px;
-            letter-spacing: .3px;
-        }
+  /* ---------- IMPORT TRAY ---------- */
+  #importbar{display:flex;gap:8px;padding:8px 12px 4px;overflow-x:auto;}
+  .addbtn{flex:0 0 auto;width:54px;height:54px;border-radius:12px;background:var(--panel2);
+    border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--text-dim);}
 
-        #topbar .brand span {
-            color: var(--accent);
-        }
+  input[type=file]{display:none;}
 
-        #topbar .actions {
-            display: flex;
-            gap: 8px;
-        }
+  #toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);
+    background:#23272f;color:var(--text);padding:9px 16px;border-radius:20px;font-size:13px;
+    box-shadow:0 4px 18px rgba(0,0,0,.4);opacity:0;transition:opacity .25s;pointer-events:none;z-index:50;}
+  #toast.show{opacity:1;}
 
-        .iconbtn {
-            width: 36px;
-            height: 36px;
-            border-radius: 10px;
-            background: var(--panel2);
-            border: 1px solid var(--line);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: var(--text);
-            font-size: 16px;
-        }
-
-        .iconbtn:active {
-            background: #23272f;
-        }
-
-        .iconbtn.primary {
-            background: var(--accent);
-            border-color: var(--accent);
-            color: #1a0d08;
-        }
-
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--text-dim);
-            margin-right: 6px;
-            display: inline-block;
-        }
-
-        .status-dot.ready {
-            background: var(--accent2);
-        }
-
-        #netstatus {
-            font-size: 11px;
-            color: var(--text-dim);
-            display: flex;
-            align-items: center;
-        }
-
-        /* ---------- PREVIEW ---------- */
-        #preview-wrap {
-            flex: 1 1 auto;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: #000;
-            position: relative;
-            overflow: hidden;
-            min-height: 0;
-        }
-
-        #previewVideo,
-        #previewImg {
-            max-width: 100%;
-            max-height: 100%;
-            display: none;
-            background: #000;
-        }
-
-        #emptyState {
-            color: var(--text-dim);
-            text-align: center;
-            font-size: 13px;
-            padding: 20px;
-        }
-
-        #emptyState .big {
-            font-size: 34px;
-            display: block;
-            margin-bottom: 10px;
-        }
-
-        #playOverlay {
-            position: absolute;
-            width: 60px;
-            height: 60px;
-            border-radius: 50%;
-            background: rgba(0, 0, 0, .45);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 22px;
-            color: #fff;
-        }
-
-        /* ---------- TOOL ROW ---------- */
-        #toolrow {
-            display: flex;
-            gap: 8px;
-            padding: 10px 12px;
-            background: var(--panel);
-            border-top: 1px solid var(--line);
-            overflow-x: auto;
-            flex: 0 0 auto;
-        }
-
-        .tool {
-            flex: 0 0 auto;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 4px;
-            padding: 8px 12px;
-            border-radius: 12px;
-            background: var(--panel2);
-            border: 1px solid var(--line);
-            min-width: 58px;
-        }
-
-        .tool .ic {
-            font-size: 18px;
-        }
-
-        .tool .lb {
-            font-size: 10px;
-            color: var(--text-dim);
-        }
-
-        .tool:active {
-            background: #23272f;
-        }
-
-        .tool[disabled] {
-            opacity: .35;
-        }
-
-        /* ---------- TIMELINE ---------- */
-        #timeline-region {
-            flex: 0 0 auto;
-            background: var(--panel);
-            border-top: 1px solid var(--line);
-        }
-
-        #playhead-time {
-            text-align: center;
-            font-size: 12px;
-            color: var(--text-dim);
-            padding: 6px 0 2px;
-            font-variant-numeric: tabular-nums;
-        }
-
-        #timeline-scroll {
-            position: relative;
-            overflow-x: auto;
-            overflow-y: hidden;
-            padding: 6px 0 12px;
-        }
-
-        #timeline-inner {
-            position: relative;
-            height: calc(var(--track-h)*3 + 16px);
-            min-width: 100%;
-        }
-
-        .track {
-            position: relative;
-            height: var(--track-h);
-            margin-bottom: 6px;
-            border-radius: 8px;
-            background: #101317;
-        }
-
-        .ruler {
-            position: absolute;
-            top: 0;
-            left: 0;
-            height: 14px;
-            width: 100%;
-            pointer-events: none;
-        }
-
-        .clip {
-            position: absolute;
-            top: 3px;
-            bottom: 3px;
-            border-radius: 7px;
-            overflow: hidden;
-            background: linear-gradient(135deg, #2b3340, #1c222c);
-            border: 1px solid var(--line);
-            display: flex;
-            align-items: center;
-            padding: 0 8px;
-            font-size: 11px;
-            color: var(--text);
-            white-space: nowrap;
-        }
-
-        .clip.video {
-            border-color: #3a5a78;
-        }
-
-        .clip.audio {
-            background: linear-gradient(135deg, #2c2240, #1c1730);
-            border-color: #5b3a78;
-            height: 34px;
-            top: 11px;
-        }
-
-        .clip.selected {
-            outline: 2px solid var(--accent);
-        }
-
-        .clip .handle {
-            position: absolute;
-            top: 0;
-            bottom: 0;
-            width: 10px;
-            background: rgba(255, 255, 255, .12);
-        }
-
-        .clip .handle.l {
-            left: 0;
-            border-radius: 7px 0 0 7px;
-        }
-
-        .clip .handle.r {
-            right: 0;
-            border-radius: 0 7px 7px 0;
-        }
-
-        #playhead {
-            position: absolute;
-            top: 0;
-            bottom: 0;
-            width: 2px;
-            background: var(--accent);
-            z-index: 5;
-            pointer-events: none;
-        }
-
-        #playhead::before {
-            content: '';
-            position: absolute;
-            top: -4px;
-            left: -5px;
-            width: 12px;
-            height: 8px;
-            background: var(--accent);
-            border-radius: 2px;
-        }
-
-        /* ---------- IMPORT TRAY ---------- */
-        #importbar {
-            display: flex;
-            gap: 8px;
-            padding: 8px 12px 4px;
-            overflow-x: auto;
-        }
-
-        .addbtn {
-            flex: 0 0 auto;
-            width: 54px;
-            height: 54px;
-            border-radius: 12px;
-            background: var(--panel2);
-            border: 1px dashed var(--line);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 22px;
-            color: var(--text-dim);
-        }
-
-        input[type=file] {
-            display: none;
-        }
-
-        #toast {
-            position: fixed;
-            bottom: 90px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #23272f;
-            color: var(--text);
-            padding: 9px 16px;
-            border-radius: 20px;
-            font-size: 13px;
-            box-shadow: 0 4px 18px rgba(0, 0, 0, .4);
-            opacity: 0;
-            transition: opacity .25s;
-            pointer-events: none;
-            z-index: 50;
-        }
-
-        #toast.show {
-            opacity: 1;
-        }
-
-        /* ---------- modal ---------- */
-        .modal-bg {
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, .6);
-            display: none;
-            align-items: flex-end;
-            z-index: 60;
-        }
-
-        .modal-bg.show {
-            display: flex;
-        }
-
-        .sheet {
-            background: var(--panel);
-            width: 100%;
-            border-radius: 16px 16px 0 0;
-            padding: 16px;
-            max-height: 70vh;
-            overflow-y: auto;
-        }
-
-        .sheet h3 {
-            margin: 0 0 12px;
-            font-size: 14px;
-            color: var(--text-dim);
-            font-weight: 600;
-        }
-
-        .sheet-row {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            padding: 12px 4px;
-            border-bottom: 1px solid var(--line);
-            font-size: 14px;
-        }
-
-        .sheet-row:last-child {
-            border-bottom: none;
-        }
-
-        .danger {
-            color: #ff6b6b;
-        }
-    </style>
+  /* ---------- modal ---------- */
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:flex-end;z-index:60;}
+  .modal-bg.show{display:flex;}
+  .sheet{background:var(--panel);width:100%;border-radius:16px 16px 0 0;padding:16px;max-height:70vh;overflow-y:auto;}
+  .sheet h3{margin:0 0 12px;font-size:14px;color:var(--text-dim);font-weight:600;}
+  .sheet-row{display:flex;align-items:center;justify-content:space-between;padding:12px 4px;border-bottom:1px solid var(--line);font-size:14px;}
+  .sheet-row:last-child{border-bottom:none;}
+  .danger{color:#ff6b6b;}
+</style>
 </head>
-
 <body>
-    <div id="app">
+<div id="app">
 
-        <div id="topbar">
-            <div class="brand">МОНТАЖ<span>.</span></div>
-            <div id="netstatus"><span class="status-dot" id="engineDot"></span><span id="engineLabel">Загрузка
-                    движка…</span></div>
-            <div class="actions">
-                <div class="iconbtn" id="undoBtn">↺</div>
-                <div class="iconbtn primary" id="exportBtn">⬆</div>
-            </div>
-        </div>
-
-        <div id="preview-wrap">
-            <video id="previewVideo" playsinline></video>
-            <img id="previewImg">
-            <div id="emptyState"><span class="big">🎬</span>Импортируй видео, фото или аудио<br>чтобы начать монтаж
-            </div>
-        </div>
-
-        <div id="toolrow">
-            <div class="tool" data-tool="split">
-                <div class="ic">✂️</div>
-                <div class="lb">Разрезать</div>
-            </div>
-            <div class="tool" data-tool="trim">
-                <div class="ic">↔️</div>
-                <div class="lb">Обрезать</div>
-            </div>
-            <div class="tool" data-tool="duplicate">
-                <div class="ic">📋</div>
-                <div class="lb">Копия</div>
-            </div>
-            <div class="tool" data-tool="delete">
-                <div class="ic">🗑️</div>
-                <div class="lb">Удалить</div>
-            </div>
-            <div class="tool" data-tool="crop">
-                <div class="ic">🖼️</div>
-                <div class="lb">Кадр</div>
-            </div>
-            <div class="tool" data-tool="speed">
-                <div class="ic">⚡</div>
-                <div class="lb">Скорость</div>
-            </div>
-        </div>
-
-        <div id="timeline-region">
-            <div id="playhead-time">00:00.0</div>
-            <div id="importbar">
-                <div class="addbtn" id="addVideoBtn">🎞️</div>
-                <div class="addbtn" id="addAudioBtn">🎵</div>
-                <div class="addbtn" id="addImgBtn">🖼️</div>
-            </div>
-            <div id="timeline-scroll">
-                <div id="timeline-inner">
-                    <div class="track" id="trackV2" data-track="v2"></div>
-                    <div class="track" id="trackV1" data-track="v1"></div>
-                    <div class="track" id="trackA1" data-track="a1"></div>
-                    <div id="playhead"></div>
-                </div>
-            </div>
-        </div>
-
+  <div id="topbar">
+    <div class="brand">МОНТАЖ<span>.</span></div>
+    <div id="netstatus"><span class="status-dot" id="engineDot"></span><span id="engineLabel">Загрузка движка…</span></div>
+    <div class="actions">
+      <div class="iconbtn" id="undoBtn">↺</div>
+      <div class="iconbtn primary" id="exportBtn">⬆</div>
     </div>
+  </div>
 
-    <input type="file" id="fileVideo" accept="video/*" multiple>
-    <input type="file" id="fileAudio" accept="audio/*" multiple>
-    <input type="file" id="fileImg" accept="image/*" multiple>
+  <div id="preview-wrap">
+    <video id="previewVideo" playsinline></video>
+    <img id="previewImg">
+    <div id="emptyState"><span class="big">🎬</span>Импортируй видео, фото или аудио<br>чтобы начать монтаж</div>
+  </div>
 
-    <div id="toast"></div>
+  <div id="toolrow">
+    <div class="tool" data-tool="split"><div class="ic">✂️</div><div class="lb">Разрезать</div></div>
+    <div class="tool" data-tool="trim"><div class="ic">↔️</div><div class="lb">Обрезать</div></div>
+    <div class="tool" data-tool="duplicate"><div class="ic">📋</div><div class="lb">Копия</div></div>
+    <div class="tool" data-tool="delete"><div class="ic">🗑️</div><div class="lb">Удалить</div></div>
+    <div class="tool" data-tool="crop"><div class="ic">🖼️</div><div class="lb">Кадр</div></div>
+    <div class="tool" data-tool="speed"><div class="ic">⚡</div><div class="lb">Скорость</div></div>
+  </div>
 
-    <div class="modal-bg" id="clipMenu">
-        <div class="sheet">
-            <h3>Клип</h3>
-            <div class="sheet-row" id="menuSplit">Разрезать тут ✂️</div>
-            <div class="sheet-row" id="menuDuplicate">Дублировать 📋</div>
-            <div class="sheet-row" id="menuSpeed">Скорость ⚡</div>
-            <div class="sheet-row danger" id="menuDelete">Удалить 🗑️</div>
-        </div>
+  <div id="timeline-region">
+    <div id="playhead-time">00:00.0</div>
+    <div id="importbar">
+      <div class="addbtn" id="addVideoBtn">🎞️</div>
+      <div class="addbtn" id="addAudioBtn">🎵</div>
+      <div class="addbtn" id="addImgBtn">🖼️</div>
     </div>
+    <div id="timeline-scroll">
+      <div id="timeline-inner">
+        <div class="track" id="trackV2" data-track="v2"></div>
+        <div class="track" id="trackV1" data-track="v1"></div>
+        <div class="track" id="trackA1" data-track="a1"></div>
+        <div id="playhead"></div>
+      </div>
+    </div>
+  </div>
 
-    <script src="./app.js"></script>
+</div>
+
+<input type="file" id="fileVideo" accept="video/*" multiple>
+<input type="file" id="fileAudio" accept="audio/*" multiple>
+<input type="file" id="fileImg" accept="image/*" multiple>
+
+<div id="toast"></div>
+
+<div class="modal-bg" id="clipMenu">
+  <div class="sheet">
+    <h3>Клип</h3>
+    <div class="sheet-row" id="menuSplit">Разрезать тут ✂️</div>
+    <div class="sheet-row" id="menuDuplicate">Дублировать 📋</div>
+    <div class="sheet-row" id="menuSpeed">Скорость ⚡</div>
+    <div class="sheet-row danger" id="menuDelete">Удалить 🗑️</div>
+  </div>
+</div>
+
+<script src="./app.js"></script>
 </body>
-
 </html>
