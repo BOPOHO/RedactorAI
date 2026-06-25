@@ -1,7 +1,8 @@
 /* ======================================================================
-   МОНТАЖ — Этап 1
-   Импорт + таймлайн (3 дорожки) + разрезать/обрезать/склеить/дублировать/удалить
-   Работает офлайн после первой загрузки (см. sw.js)
+   МОНТАЖ — Этап 1 (исправленная версия)
+   Импорт + таймлайн (3 дорожки) + разрезать/обрезать/дублировать/удалить
+   + рабочий ЭКСПОРТ в MP4 через FFmpeg.wasm (движок грузится 1 раз, потом офлайн)
+   + звук аудио-дорожки слышен при просмотре
    ====================================================================== */
 
 (function(){
@@ -9,7 +10,7 @@
 
 // ---------- STATE ----------
 const state = {
-  clips: [],          // {id, track, type, file, url, start, duration, trimIn, trimOut, name, thumb}
+  clips: [],
   selectedId: null,
   pxPerSec: 40,
   playhead: 0,
@@ -19,7 +20,7 @@ const state = {
 const el = (id)=>document.getElementById(id);
 const trackEls = { v2: el('trackV2'), v1: el('trackV1'), a1: el('trackA1') };
 
-function toast(msg, ms=1800){
+function toast(msg, ms=2200){
   const t = el('toast');
   t.textContent = msg;
   t.classList.add('show');
@@ -61,9 +62,10 @@ function addClip(file, type, track){
       track, type, file, url,
       name: file.name,
       start: lastEndOnTrack(track),
-      duration: 3,      // default for images, replaced for video/audio
+      duration: 3,
       trimIn: 0,
       trimOut: 3,
+      volume: 1,
     };
     if(type === 'image'){
       clip.duration = 3; clip.trimOut = 3;
@@ -120,25 +122,12 @@ function render(){
   const totalWidth = Math.max(window.innerWidth, (maxEnd+5) * state.pxPerSec);
   el('timeline-inner').style.width = totalWidth + 'px';
   updatePlayheadPos();
+  el('emptyState').style.display = state.clips.length ? 'none' : 'block';
 }
 
 function escapeHtml(s){
   return s.replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
-
-function selectClip(id){
-  state.selectedId = id;
-  render();
-  const clip = state.clips.find(c=>c.id===id);
-  if(clip) loadPreviewClip(clip);
-}
-
-document.getElementById('timeline-inner').addEventListener('click', (ev)=>{
-  // клик по пустому месту таймлайна — снимаем выделение клипа
-  if(ev.target.closest('.clip')) return;
-  state.selectedId = null;
-  render();
-});
 
 // ---------- ДВИЖЕНИЕ КРАСНОЙ ПАЛКИ (плейхеда) ----------
 const timelineInner = el('timeline-inner');
@@ -152,45 +141,74 @@ function setPlayheadFromClientX(clientX){
   syncPreviewToPlayhead();
 }
 
+// текущий звучащий аудио-клип (отдельный Audio-объект, играет параллельно с превью-видео)
+let activeAudioEl = null;
+let activeAudioClipId = null;
+
 function syncPreviewToPlayhead(){
-  // находим клип на любой видео-дорожке, который сейчас "под палкой"
-  const clip = state.clips.find(c=>{
+  const visualClip = state.clips.find(c=>{
     const len = c.trimOut - c.trimIn;
     return c.track !== 'a1' && state.playhead >= c.start && state.playhead < c.start + len;
   });
-  if(!clip) return;
-  if(clip.id !== state.selectedId){
-    state.selectedId = clip.id;
-    render();
+  if(visualClip){
+    if(visualClip.id !== state.selectedId){
+      state.selectedId = visualClip.id;
+      render();
+    }
+    if(visualClip.type === 'video'){
+      const v = el('previewVideo');
+      if(v.src !== visualClip.url) v.src = visualClip.url;
+      v.currentTime = visualClip.trimIn + (state.playhead - visualClip.start);
+      el('previewImg').style.display='none';
+      v.style.display='block';
+    } else if(visualClip.type === 'image'){
+      const img = el('previewImg');
+      if(img.src !== visualClip.url) img.src = visualClip.url;
+      el('previewVideo').style.display='none';
+      img.style.display='block';
+    }
   }
-  if(clip.type === 'video'){
-    const v = el('previewVideo');
-    if(v.src !== clip.url) v.src = clip.url;
-    v.currentTime = clip.trimIn + (state.playhead - clip.start);
-    el('previewImg').style.display='none';
-    v.style.display='block';
-    el('emptyState').style.display='none';
-  } else if(clip.type === 'image'){
-    const img = el('previewImg');
-    if(img.src !== clip.url) img.src = clip.url;
-    el('previewVideo').style.display='none';
-    img.style.display='block';
-    el('emptyState').style.display='none';
+
+  // звук аудио-дорожки
+  const audioClip = state.clips.find(c=>{
+    const len = c.trimOut - c.trimIn;
+    return c.track === 'a1' && state.playhead >= c.start && state.playhead < c.start + len;
+  });
+  if(audioClip){
+    if(activeAudioClipId !== audioClip.id){
+      if(activeAudioEl){ activeAudioEl.pause(); }
+      activeAudioEl = new Audio(audioClip.url);
+      activeAudioClipId = audioClip.id;
+    }
+    if(activeAudioEl){
+      activeAudioEl.currentTime = audioClip.trimIn + (state.playhead - audioClip.start);
+    }
+  } else if(activeAudioEl){
+    activeAudioEl.pause();
+    activeAudioEl = null;
+    activeAudioClipId = null;
   }
 }
 
+function playAllFromPlayhead(){
+  const v = el('previewVideo');
+  if(v.style.display === 'block') v.play().catch(()=>{});
+  if(activeAudioEl) activeAudioEl.play().catch(()=>{});
+}
+function pauseAll(){
+  el('previewVideo').pause();
+  if(activeAudioEl) activeAudioEl.pause();
+}
+
 let scrubbing = false;
-let dragStartedOnClip = false;
 
 timelineScroll.addEventListener('mousedown', (ev)=>{
-  dragStartedOnClip = !!ev.target.closest('.clip');
-  if(dragStartedOnClip) return; // клипы сами обрабатывают свой драг в attachDrag
+  if(ev.target.closest('.clip')) return;
   scrubbing = true;
   setPlayheadFromClientX(ev.clientX);
 });
 timelineScroll.addEventListener('touchstart', (ev)=>{
-  dragStartedOnClip = !!ev.target.closest('.clip');
-  if(dragStartedOnClip) return;
+  if(ev.target.closest('.clip')) return;
   scrubbing = true;
   setPlayheadFromClientX(ev.touches[0].clientX);
 }, {passive:true});
@@ -203,17 +221,15 @@ window.addEventListener('touchmove', (ev)=>{
 window.addEventListener('mouseup', ()=>scrubbing=false);
 window.addEventListener('touchend', ()=>scrubbing=false);
 
-// тоже даём двигать палку, таская сам треугольник плейхеда
 const playheadEl = el('playhead');
 playheadEl.style.cursor = 'ew-resize';
 playheadEl.style.pointerEvents = 'auto';
 playheadEl.addEventListener('mousedown', (ev)=>{ scrubbing = true; ev.stopPropagation(); });
 playheadEl.addEventListener('touchstart', (ev)=>{ scrubbing = true; ev.stopPropagation(); }, {passive:true});
 
-// ---------- DRAG TO MOVE / TRIM ----------
+// ---------- DRAG TO MOVE / TRIM CLIPS ----------
 function attachDrag(node, clip){
-  let mode = null, startX = 0, origStart = 0, origIn = 0, origOut = 0;
-  let moved = false;
+  let mode = null, startX = 0, origStart = 0, origIn = 0, origOut = 0, moved = false;
 
   function onDown(ev){
     const x = (ev.touches ? ev.touches[0].clientX : ev.clientX);
@@ -222,8 +238,7 @@ function attachDrag(node, clip){
     if(relX < 14) mode = 'trimL';
     else if(relX > rect.width - 14) mode = 'trimR';
     else mode = 'move';
-    startX = x;
-    moved = false;
+    startX = x; moved = false;
     origStart = clip.start; origIn = clip.trimIn; origOut = clip.trimOut;
     ev.stopPropagation();
     window.addEventListener('mousemove', onMove);
@@ -235,7 +250,7 @@ function attachDrag(node, clip){
   function onMove(ev){
     const x = (ev.touches ? ev.touches[0].clientX : ev.clientX);
     if(Math.abs(x - startX) > 4) moved = true;
-    if(!moved) return; // меньше 4px — считаем это тапом, а не перетаскиванием
+    if(!moved) return;
     if(ev.cancelable) ev.preventDefault();
     const dx = (x - startX) / state.pxPerSec;
     if(mode === 'move'){
@@ -255,9 +270,10 @@ function attachDrag(node, clip){
 
   function onUp(ev){
     if(!moved){
-      // это был просто тап по клипу — двигаем палку в это место
       const x = (ev.changedTouches ? ev.changedTouches[0].clientX : ev.clientX);
       setPlayheadFromClientX(x);
+    } else if(mode !== 'move'){
+      toast('Края обрезаны');
     }
     mode = null;
     window.removeEventListener('mousemove', onMove);
@@ -270,27 +286,12 @@ function attachDrag(node, clip){
   node.addEventListener('touchstart', onDown, {passive:false});
 }
 
-// ---------- PREVIEW ----------
-function loadPreviewClip(clip){
-  const v = el('previewVideo'), img = el('previewImg'), empty = el('emptyState');
-  empty.style.display = 'none';
-  if(clip.type === 'image'){
-    v.style.display = 'none'; v.pause();
-    img.style.display = 'block';
-    img.src = clip.url;
-  } else {
-    img.style.display = 'none';
-    v.style.display = 'block';
-    if(v.src !== clip.url) v.src = clip.url;
-    v.currentTime = clip.trimIn;
-  }
-}
-
+// ---------- PREVIEW PLAY/PAUSE ----------
 el('previewVideo').addEventListener('click', function(){
-  if(this.paused) this.play(); else this.pause();
+  if(this.paused) playAllFromPlayhead(); else pauseAll();
 });
 
-// ---------- PLAYHEAD ----------
+// ---------- PLAYHEAD LABEL ----------
 function updatePlayheadPos(){
   el('playhead').style.left = (state.playhead * state.pxPerSec) + 'px';
   el('playhead-time').textContent = fmtTime(state.playhead);
@@ -311,23 +312,22 @@ function runTool(action, clip){
     case 'split': doSplit(clip); break;
     case 'duplicate': doDuplicate(clip); break;
     case 'delete': doDelete(clip); break;
-    case 'trim': toast('Тяни края клипа на таймлайне ↔️'); break;
-    case 'crop': toast('Кадрирование — будет на Этапе 2'); break;
-    case 'speed': toast('Скорость — будет на Этапе 2'); break;
+    case 'trim': toast('Тяни за края клипа на таймлайне ↔️'); break;
+    case 'crop': toast('Кадрирование появится на Этапе 2'); break;
+    case 'speed': toast('Скорость появится на Этапе 2'); break;
   }
 }
 
 function doSplit(clip){
   const len = clip.trimOut - clip.trimIn;
-  let splitAt = state.playhead - clip.start; // позиция реза внутри клипа, в секундах от начала клипа
+  let splitAt = state.playhead - clip.start;
 
   if(splitAt <= 0.1 || splitAt >= len - 0.1){
     toast('Поставь красную палку внутри клипа, потом жми "Разрезать"');
     return;
   }
 
-  const GAP = 0.12; // небольшой видимый зазор между получившимися частями, чтобы было видно что их 2
-
+  const GAP = 0.12;
   const newClip = Object.assign({}, clip, {
     id: state.nextId++,
     start: clip.start + splitAt + GAP,
@@ -344,11 +344,7 @@ function doSplit(clip){
 
 function doDuplicate(clip){
   const len = clip.trimOut - clip.trimIn;
-  const copy = Object.assign({}, clip, {
-    id: state.nextId++,
-    start: clip.start + len,
-    name: clip.name,
-  });
+  const copy = Object.assign({}, clip, { id: state.nextId++, start: clip.start + len });
   state.clips.push(copy);
   state.selectedId = copy.id;
   render();
@@ -359,19 +355,179 @@ function doDelete(clip){
   state.clips = state.clips.filter(c=>c.id!==clip.id);
   state.selectedId = null;
   render();
-  el('emptyState').style.display = state.clips.length ? 'none' : 'block';
   toast('Клип удалён 🗑️');
 }
 
-el('undoBtn').addEventListener('click', ()=>toast('Undo появится на следующем этапе'));
-el('exportBtn').addEventListener('click', ()=>toast('Экспорт появится в конце — после всех функций'));
+// ======================================================================
+//  ЭКСПОРТ ВИДЕО — реальный движок FFmpeg.wasm
+// ======================================================================
 
-// ---------- ENGINE STATUS (FFmpeg.wasm placeholder for Stage 1) ----------
-function setEngineStatus(ready, label){
-  el('engineDot').classList.toggle('ready', ready);
+let ffmpeg = null;
+let engineReady = false;
+
+function setEngineStatus(mode, label){
+  const dot = el('engineDot');
+  dot.classList.remove('ready','busy');
+  if(mode) dot.classList.add(mode);
   el('engineLabel').textContent = label;
 }
-setEngineStatus(false, 'Этап 1: монтаж без движка экспорта');
+
+async function ensureEngineLoaded(){
+  if(engineReady) return true;
+  if(typeof FFmpegWASM === 'undefined' && typeof FFmpeg === 'undefined'){
+    toast('Файлы движка не найдены — проверь папку engine рядом с index.html');
+    setEngineStatus(null, 'Движок не найден');
+    return false;
+  }
+  try{
+    setEngineStatus('busy', 'Загрузка движка… (нужен интернет один раз)');
+    const FF = (typeof FFmpegWASM !== 'undefined') ? FFmpegWASM.FFmpeg : FFmpeg.FFmpeg;
+    ffmpeg = new FF();
+    ffmpeg.on('log', ({message})=>{ /* console.log(message); */ });
+    await ffmpeg.load({
+      coreURL: './engine/ffmpeg-core.js',
+      wasmURL: './engine/ffmpeg-core.wasm',
+    });
+    engineReady = true;
+    setEngineStatus('ready', 'Движок готов (работает офлайн)');
+    return true;
+  } catch(err){
+    console.error(err);
+    setEngineStatus(null, 'Ошибка загрузки движка');
+    toast('Не получилось загрузить движок экспорта. Проверь, что папка engine загружена рядом с index.html, и что есть интернет (нужен один раз).');
+    return false;
+  }
+}
+
+function fileExtFromName(name){
+  const m = /\.([a-zA-Z0-9]+)$/.exec(name||'');
+  return m ? m[1].toLowerCase() : 'mp4';
+}
+
+async function fetchFileAsUint8(url){
+  const res = await fetch(url);
+  const buf = await res.arrayBuffer();
+  return new Uint8Array(buf);
+}
+
+// Экспорт: берём клипы видео-дорожки V1 (основная), режем по trimIn/trimOut,
+// конкатенируем по порядку start. Аудио-дорожка добавляется отдельным шагом.
+async function runExport(onProgress){
+  const v1Clips = state.clips
+    .filter(c=>c.track==='v1' && c.type==='video')
+    .sort((a,b)=>a.start-b.start);
+
+  if(!v1Clips.length){
+    throw new Error('Нет видео на дорожке "Видео 1" — добавь хотя бы один видеоклип');
+  }
+
+  const segmentFiles = [];
+  for(let i=0;i<v1Clips.length;i++){
+    const clip = v1Clips[i];
+    const inName = `in_${i}.${fileExtFromName(clip.name)}`;
+    const outName = `seg_${i}.mp4`;
+    const data = await fetchFileAsUint8(clip.url);
+    await ffmpeg.writeFile(inName, data);
+
+    const dur = (clip.trimOut - clip.trimIn).toFixed(3);
+    const start = clip.trimIn.toFixed(3);
+
+    await ffmpeg.exec([
+      '-y','-ss', start, '-i', inName, '-t', dur,
+      '-vf','scale=1280:-2',
+      '-c:v','libx264','-preset','ultrafast','-crf','23',
+      '-c:a','aac','-b:a','128k',
+      outName
+    ]);
+    segmentFiles.push(outName);
+    onProgress && onProgress(0.1 + 0.6 * ((i+1)/v1Clips.length));
+  }
+
+  // список для конкатенации
+  const listContent = segmentFiles.map(f=>`file '${f}'`).join('\n');
+  await ffmpeg.writeFile('list.txt', new TextEncoder().encode(listContent));
+
+  await ffmpeg.exec(['-y','-f','concat','-safe','0','-i','list.txt','-c','copy','concat_video.mp4']);
+  onProgress && onProgress(0.75);
+
+  // аудио-дорожка (берём первый аудио-клип целиком для Этапа 1 — упрощённая версия)
+  const a1Clips = state.clips.filter(c=>c.track==='a1' && c.type==='audio').sort((a,b)=>a.start-b.start);
+  let finalName = 'concat_video.mp4';
+
+  if(a1Clips.length){
+    const aClip = a1Clips[0];
+    const audioInName = `aud_in.${fileExtFromName(aClip.name)}`;
+    const audioData = await fetchFileAsUint8(aClip.url);
+    await ffmpeg.writeFile(audioInName, audioData);
+    const aDur = (aClip.trimOut - aClip.trimIn).toFixed(3);
+    const aStart = aClip.trimIn.toFixed(3);
+
+    await ffmpeg.exec([
+      '-y','-i','concat_video.mp4',
+      '-ss', aStart, '-t', aDur, '-i', audioInName,
+      '-map','0:v:0','-map','1:a:0',
+      '-c:v','copy','-c:a','aac','-b:a','128k',
+      '-shortest',
+      'final_output.mp4'
+    ]);
+    finalName = 'final_output.mp4';
+  }
+  onProgress && onProgress(0.95);
+
+  const resultData = await ffmpeg.readFile(finalName);
+  onProgress && onProgress(1);
+  return new Blob([resultData.buffer], {type:'video/mp4'});
+}
+
+// ---------- EXPORT UI ----------
+const exportSheet = el('exportSheet');
+const exportBody = el('exportBody');
+const exportProgress = el('exportProgress');
+const exportDone = el('exportDone');
+const exportProgressBar = el('exportProgressBar');
+const exportProgressLabel = el('exportProgressLabel');
+
+el('exportBtn').addEventListener('click', ()=>{
+  exportBody.style.display = 'block';
+  exportProgress.style.display = 'none';
+  exportDone.style.display = 'none';
+  exportSheet.classList.add('show');
+});
+el('exportCloseBtn').addEventListener('click', ()=>exportSheet.classList.remove('show'));
+el('exportDoneCloseBtn').addEventListener('click', ()=>exportSheet.classList.remove('show'));
+
+el('exportStartBtn').addEventListener('click', async ()=>{
+  pauseAll();
+  exportBody.style.display = 'none';
+  exportProgress.style.display = 'block';
+  exportProgressBar.style.width = '0%';
+  exportProgressLabel.textContent = 'Загрузка движка…';
+
+  const ok = await ensureEngineLoaded();
+  if(!ok){
+    exportProgress.style.display = 'none';
+    exportBody.style.display = 'block';
+    return;
+  }
+
+  try{
+    const blob = await runExport((p)=>{
+      const pct = Math.round(p*100);
+      exportProgressBar.style.width = pct + '%';
+      exportProgressLabel.textContent = 'Обработка… ' + pct + '%';
+    });
+    const url = URL.createObjectURL(blob);
+    el('exportDownloadLink').href = url;
+    exportProgress.style.display = 'none';
+    exportDone.style.display = 'block';
+    toast('Видео готово!');
+  } catch(err){
+    console.error(err);
+    exportProgress.style.display = 'none';
+    exportBody.style.display = 'block';
+    toast('Ошибка экспорта: ' + (err.message || 'неизвестная ошибка'));
+  }
+});
 
 // register service worker for offline caching (if present)
 if('serviceWorker' in navigator){
@@ -380,6 +536,7 @@ if('serviceWorker' in navigator){
   });
 }
 
+setEngineStatus(null, 'Движок загрузится при экспорте');
 render();
 
 })();
