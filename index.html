@@ -10,7 +10,184 @@
     --panel:#14171c;
     --panel2:#1b1f26;
     --line:#262b33;
+    --accent:#ff5b3d;<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Видеоредактор</title>
+<style>
+  :root{
+    --bg:#ffffff;
+    --bg-soft:#f5f6f8;
+    --panel:#ffffff;
+    --panel2:#f0f1f4;
+    --line:#e3e5ea;
     --accent:#ff5b3d;
+    --accent2:#16a085;
+    --text:#1b1d21;
+    --text-dim:#7a7f8a;
+    --track-h:56px;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;height:100%;background:var(--bg-soft);color:var(--text);
+    font-family:-apple-system,Roboto,"Segoe UI",sans-serif;overscroll-behavior:none;user-select:none;}
+  #app{display:flex;flex-direction:column;height:100vh;height:100dvh;}
+
+  #topbar{display:flex;align-items:center;justify-content:space-between;
+    padding:12px 14px;background:var(--panel);border-bottom:1px solid var(--line);flex:0 0 auto;}
+  #topbar .brand{font-weight:700;font-size:16px;letter-spacing:.2px;color:var(--text);}
+  #topbar .brand span{color:var(--accent);}
+  #topbar .actions{display:flex;gap:8px;align-items:center;}
+  .iconbtn{height:38px;padding:0 14px;border-radius:10px;background:var(--panel2);
+    border:1px solid var(--line);display:flex;align-items:center;justify-content:center;
+    color:var(--text);font-size:14px;font-weight:600;gap:6px;}
+  .iconbtn:active{background:#e6e8ec;}
+  .iconbtn.primary{background:var(--accent);border-color:var(--accent);color:#fff;}
+  .iconbtn.primary:active{background:#e64f33;}
+  .status-dot{width:8px;height:8px;border-radius:50%;background:#d0d3d9;margin-right:6px;display:inline-block;flex:0 0 auto;}
+  .status-dot.ready{background:var(--accent2);}
+  .status-dot.busy{background:#f0ad4e;animation:pulse 1s infinite;}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
+  #netstatus{font-size:11px;color:var(--text-dim);display:flex;align-items:center;}
+
+  #preview-wrap{flex:1 1 auto;display:flex;align-items:center;justify-content:center;
+    background:#15171a;position:relative;overflow:hidden;min-height:0;}
+  #previewVideo,#previewImg{max-width:100%;max-height:100%;display:none;background:#000;}
+  #emptyState{color:#9aa0ab;text-align:center;font-size:13px;padding:20px;}
+  #emptyState .big{font-size:34px;display:block;margin-bottom:10px;}
+
+  #toolrow{display:flex;gap:8px;padding:10px 12px;background:var(--panel);
+    border-top:1px solid var(--line);overflow-x:auto;flex:0 0 auto;}
+  .tool{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:4px;
+    padding:8px 12px;border-radius:12px;background:var(--panel2);border:1px solid var(--line);min-width:60px;}
+  .tool .ic{font-size:18px;}
+  .tool .lb{font-size:10px;color:var(--text-dim);font-weight:600;}
+  .tool:active{background:#e6e8ec;}
+
+  #timeline-region{flex:0 0 auto;background:var(--panel);border-top:1px solid var(--line);}
+  #playhead-time{text-align:center;font-size:13px;color:var(--text);font-weight:700;padding:8px 0 2px;font-variant-numeric:tabular-nums;}
+  #track-labels-hint{text-align:center;font-size:10px;color:var(--text-dim);padding-bottom:4px;}
+  #timeline-scroll{position:relative;overflow-x:auto;overflow-y:hidden;padding:6px 0 14px;}
+  #timeline-inner{position:relative;height:calc(var(--track-h)*3 + 16px);min-width:100%;}
+  .track{position:relative;height:var(--track-h);margin-bottom:6px;border-radius:8px;background:var(--bg-soft);border:1px solid var(--line);}
+  .track-tag{position:absolute;left:6px;top:4px;font-size:9px;color:var(--text-dim);font-weight:700;z-index:1;pointer-events:none;}
+  .clip{position:absolute;top:3px;bottom:3px;border-radius:7px;overflow:hidden;
+    background:linear-gradient(135deg,#dce8f5,#c9dcef);border:1px solid #aac4dd;
+    display:flex;align-items:center;padding:0 10px 0 16px;font-size:11px;color:#1b3a57;font-weight:600;white-space:nowrap;}
+  .clip.audio{background:linear-gradient(135deg,#ece3fb,#dccdf5);border-color:#b89ce0;height:34px;top:11px;color:#3d2766;}
+  .clip.selected{outline:2px solid var(--accent);}
+  .clip .handle{position:absolute;top:0;bottom:0;width:10px;background:rgba(0,0,0,.10);}
+  .clip .handle.l{left:0;border-radius:7px 0 0 7px;}
+  .clip .handle.r{right:0;border-radius:0 7px 7px 0;}
+  #playhead{position:absolute;top:0;bottom:0;width:2px;background:var(--accent);z-index:8;pointer-events:none;}
+  #playhead::before{content:'';position:absolute;top:-4px;left:-9px;width:20px;height:16px;background:var(--accent);border-radius:4px;pointer-events:auto;}
+
+  #importbar{display:flex;gap:8px;padding:8px 12px 4px;overflow-x:auto;}
+  .addbtn{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;gap:3px;
+    width:60px;height:54px;border-radius:12px;background:var(--panel2);
+    border:1px dashed #c7cad1;justify-content:center;font-size:20px;color:var(--text-dim);}
+  .addbtn .lb{font-size:9px;font-weight:600;}
+
+  input[type=file]{display:none;}
+
+  #toast{position:fixed;bottom:90px;left:50%;transform:translateX(-50%);
+    background:#26282c;color:#fff;padding:10px 18px;border-radius:20px;font-size:13px;
+    box-shadow:0 4px 18px rgba(0,0,0,.25);opacity:0;transition:opacity .25s;pointer-events:none;z-index:50;max-width:86vw;text-align:center;}
+  #toast.show{opacity:1;}
+
+  .modal-bg{position:fixed;inset:0;background:rgba(20,20,25,.45);display:none;align-items:flex-end;z-index:60;}
+  .modal-bg.show{display:flex;}
+  .sheet{background:var(--panel);width:100%;border-radius:16px 16px 0 0;padding:18px;max-height:80vh;overflow-y:auto;}
+  .sheet h3{margin:0 0 14px;font-size:15px;color:var(--text);font-weight:700;}
+  .sheet-row{display:flex;align-items:center;justify-content:space-between;padding:13px 4px;border-bottom:1px solid var(--line);font-size:14px;}
+  .sheet-row:last-child{border-bottom:none;}
+  .progress-wrap{background:var(--panel2);border-radius:10px;height:10px;overflow:hidden;margin:14px 0;}
+  .progress-bar{height:100%;width:0%;background:var(--accent);transition:width .15s;}
+  .sheet .bigbtn{display:block;width:100%;padding:14px;border-radius:12px;background:var(--accent);
+    color:#fff;text-align:center;font-weight:700;font-size:14px;border:none;margin-top:6px;}
+  .sheet .bigbtn:disabled{opacity:.4;}
+  .sheet .closebtn{display:block;width:100%;padding:12px;border-radius:12px;background:var(--panel2);
+    color:var(--text);text-align:center;font-weight:600;font-size:13px;border:none;margin-top:8px;}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div id="topbar">
+    <div class="brand">МОНТАЖ<span>.</span></div>
+    <div id="netstatus"><span class="status-dot" id="engineDot"></span><span id="engineLabel">Загрузка движка…</span></div>
+    <div class="actions">
+      <div class="iconbtn primary" id="exportBtn">⬆ Экспорт</div>
+    </div>
+  </div>
+
+  <div id="preview-wrap">
+    <video id="previewVideo" playsinline></video>
+    <img id="previewImg">
+    <div id="emptyState"><span class="big">🎬</span>Импортируй видео, фото или аудио<br>чтобы начать монтаж</div>
+  </div>
+
+  <div id="toolrow">
+    <div class="tool" data-tool="split"><div class="ic">✂️</div><div class="lb">Разрезать</div></div>
+    <div class="tool" data-tool="trim"><div class="ic">↔️</div><div class="lb">Обрезать края</div></div>
+    <div class="tool" data-tool="duplicate"><div class="ic">📋</div><div class="lb">Копия</div></div>
+    <div class="tool" data-tool="delete"><div class="ic">🗑️</div><div class="lb">Удалить</div></div>
+    <div class="tool" data-tool="crop"><div class="ic">🖼️</div><div class="lb">Кадр</div></div>
+    <div class="tool" data-tool="speed"><div class="ic">⚡</div><div class="lb">Скорость</div></div>
+  </div>
+
+  <div id="timeline-region">
+    <div id="playhead-time">00:00.0</div>
+    <div id="track-labels-hint">видео сверху · видео/фото · аудио снизу</div>
+    <div id="importbar">
+      <div class="addbtn" id="addVideoBtn"><span>🎞️</span><span class="lb">Видео</span></div>
+      <div class="addbtn" id="addAudioBtn"><span>🎵</span><span class="lb">Аудио</span></div>
+      <div class="addbtn" id="addImgBtn"><span>🖼️</span><span class="lb">Фото</span></div>
+    </div>
+    <div id="timeline-scroll">
+      <div id="timeline-inner">
+        <div class="track" id="trackV2" data-track="v2"><span class="track-tag">ВИДЕО 2</span></div>
+        <div class="track" id="trackV1" data-track="v1"><span class="track-tag">ВИДЕО 1</span></div>
+        <div class="track" id="trackA1" data-track="a1"><span class="track-tag">АУДИО</span></div>
+        <div id="playhead"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<input type="file" id="fileVideo" accept="video/*" multiple>
+<input type="file" id="fileAudio" accept="audio/*" multiple>
+<input type="file" id="fileImg" accept="image/*" multiple>
+
+<div id="toast"></div>
+
+<div class="modal-bg" id="exportSheet">
+  <div class="sheet">
+    <h3 id="exportTitle">Экспорт видео</h3>
+    <div id="exportBody">
+      <div class="sheet-row">Качество <b>720p</b></div>
+      <div class="sheet-row">Формат <b>MP4</b></div>
+      <button class="bigbtn" id="exportStartBtn">Начать экспорт</button>
+      <button class="closebtn" id="exportCloseBtn">Закрыть</button>
+    </div>
+    <div id="exportProgress" style="display:none;">
+      <div class="progress-wrap"><div class="progress-bar" id="exportProgressBar"></div></div>
+      <div id="exportProgressLabel" style="text-align:center;font-size:13px;color:var(--text-dim);">Обработка… 0%</div>
+    </div>
+    <div id="exportDone" style="display:none;">
+      <p style="font-size:13px;color:var(--text-dim);">Видео готово. Сохрани файл на телефон:</p>
+      <a class="bigbtn" id="exportDownloadLink" style="text-decoration:none;display:block;" download="montazh.mp4">Скачать видео.mp4</a>
+      <button class="closebtn" id="exportDoneCloseBtn">Закрыть</button>
+    </div>
+  </div>
+</div>
+
+<script src="./engine/ffmpeg.min.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>
     --accent2:#3dd6c0;
     --text:#e9ecf0;
     --text-dim:#8a909c;
