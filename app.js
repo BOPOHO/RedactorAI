@@ -113,10 +113,6 @@ function render(){
                       '<span style="position:relative;z-index:1;overflow:hidden;text-overflow:ellipsis;">'+
                       escapeHtml(clip.name)+'</span>' +
                       '<div class="handle r"></div>';
-    node.addEventListener('click', (ev)=>{
-      ev.stopPropagation();
-      selectClip(clip.id);
-    });
     attachDrag(node, clip);
     trackEls[clip.track].appendChild(node);
   });
@@ -184,13 +180,17 @@ function syncPreviewToPlayhead(){
 }
 
 let scrubbing = false;
+let dragStartedOnClip = false;
+
 timelineScroll.addEventListener('mousedown', (ev)=>{
-  if(ev.target.closest('.clip')) return;
+  dragStartedOnClip = !!ev.target.closest('.clip');
+  if(dragStartedOnClip) return; // клипы сами обрабатывают свой драг в attachDrag
   scrubbing = true;
   setPlayheadFromClientX(ev.clientX);
 });
 timelineScroll.addEventListener('touchstart', (ev)=>{
-  if(ev.target.closest('.clip')) return;
+  dragStartedOnClip = !!ev.target.closest('.clip');
+  if(dragStartedOnClip) return;
   scrubbing = true;
   setPlayheadFromClientX(ev.touches[0].clientX);
 }, {passive:true});
@@ -213,6 +213,7 @@ playheadEl.addEventListener('touchstart', (ev)=>{ scrubbing = true; ev.stopPropa
 // ---------- DRAG TO MOVE / TRIM ----------
 function attachDrag(node, clip){
   let mode = null, startX = 0, origStart = 0, origIn = 0, origOut = 0;
+  let moved = false;
 
   function onDown(ev){
     const x = (ev.touches ? ev.touches[0].clientX : ev.clientX);
@@ -222,6 +223,7 @@ function attachDrag(node, clip){
     else if(relX > rect.width - 14) mode = 'trimR';
     else mode = 'move';
     startX = x;
+    moved = false;
     origStart = clip.start; origIn = clip.trimIn; origOut = clip.trimOut;
     ev.stopPropagation();
     window.addEventListener('mousemove', onMove);
@@ -231,8 +233,10 @@ function attachDrag(node, clip){
   }
 
   function onMove(ev){
-    if(ev.cancelable) ev.preventDefault();
     const x = (ev.touches ? ev.touches[0].clientX : ev.clientX);
+    if(Math.abs(x - startX) > 4) moved = true;
+    if(!moved) return; // меньше 4px — считаем это тапом, а не перетаскиванием
+    if(ev.cancelable) ev.preventDefault();
     const dx = (x - startX) / state.pxPerSec;
     if(mode === 'move'){
       clip.start = Math.max(0, origStart + dx);
@@ -249,7 +253,12 @@ function attachDrag(node, clip){
     render();
   }
 
-  function onUp(){
+  function onUp(ev){
+    if(!moved){
+      // это был просто тап по клипу — двигаем палку в это место
+      const x = (ev.changedTouches ? ev.changedTouches[0].clientX : ev.clientX);
+      setPlayheadFromClientX(x);
+    }
     mode = null;
     window.removeEventListener('mousemove', onMove);
     window.removeEventListener('touchmove', onMove);
