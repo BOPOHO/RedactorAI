@@ -137,10 +137,78 @@ function selectClip(id){
   if(clip) loadPreviewClip(clip);
 }
 
-document.getElementById('timeline-inner').addEventListener('click', ()=>{
+document.getElementById('timeline-inner').addEventListener('click', (ev)=>{
+  // клик по пустому месту таймлайна — снимаем выделение клипа
+  if(ev.target.closest('.clip')) return;
   state.selectedId = null;
   render();
 });
+
+// ---------- ДВИЖЕНИЕ КРАСНОЙ ПАЛКИ (плейхеда) ----------
+const timelineInner = el('timeline-inner');
+const timelineScroll = el('timeline-scroll');
+
+function setPlayheadFromClientX(clientX){
+  const rect = timelineInner.getBoundingClientRect();
+  const x = clientX - rect.left;
+  state.playhead = Math.max(0, x / state.pxPerSec);
+  updatePlayheadPos();
+  syncPreviewToPlayhead();
+}
+
+function syncPreviewToPlayhead(){
+  // находим клип на любой видео-дорожке, который сейчас "под палкой"
+  const clip = state.clips.find(c=>{
+    const len = c.trimOut - c.trimIn;
+    return c.track !== 'a1' && state.playhead >= c.start && state.playhead < c.start + len;
+  });
+  if(!clip) return;
+  if(clip.id !== state.selectedId){
+    state.selectedId = clip.id;
+    render();
+  }
+  if(clip.type === 'video'){
+    const v = el('previewVideo');
+    if(v.src !== clip.url) v.src = clip.url;
+    v.currentTime = clip.trimIn + (state.playhead - clip.start);
+    el('previewImg').style.display='none';
+    v.style.display='block';
+    el('emptyState').style.display='none';
+  } else if(clip.type === 'image'){
+    const img = el('previewImg');
+    if(img.src !== clip.url) img.src = clip.url;
+    el('previewVideo').style.display='none';
+    img.style.display='block';
+    el('emptyState').style.display='none';
+  }
+}
+
+let scrubbing = false;
+timelineScroll.addEventListener('mousedown', (ev)=>{
+  if(ev.target.closest('.clip')) return;
+  scrubbing = true;
+  setPlayheadFromClientX(ev.clientX);
+});
+timelineScroll.addEventListener('touchstart', (ev)=>{
+  if(ev.target.closest('.clip')) return;
+  scrubbing = true;
+  setPlayheadFromClientX(ev.touches[0].clientX);
+}, {passive:true});
+window.addEventListener('mousemove', (ev)=>{
+  if(scrubbing) setPlayheadFromClientX(ev.clientX);
+});
+window.addEventListener('touchmove', (ev)=>{
+  if(scrubbing) setPlayheadFromClientX(ev.touches[0].clientX);
+}, {passive:true});
+window.addEventListener('mouseup', ()=>scrubbing=false);
+window.addEventListener('touchend', ()=>scrubbing=false);
+
+// тоже даём двигать палку, таская сам треугольник плейхеда
+const playheadEl = el('playhead');
+playheadEl.style.cursor = 'ew-resize';
+playheadEl.style.pointerEvents = 'auto';
+playheadEl.addEventListener('mousedown', (ev)=>{ scrubbing = true; ev.stopPropagation(); });
+playheadEl.addEventListener('touchstart', (ev)=>{ scrubbing = true; ev.stopPropagation(); }, {passive:true});
 
 // ---------- DRAG TO MOVE / TRIM ----------
 function attachDrag(node, clip){
@@ -225,7 +293,7 @@ el('toolrow').addEventListener('click', (ev)=>{
   if(!tool) return;
   const action = tool.dataset.tool;
   const clip = state.clips.find(c=>c.id===state.selectedId);
-  if(!clip){ toast('Сначала выбери клип на таймлайне'); return; }
+  if(!clip){ toast('Нажми на клип или поставь красную палку на него'); return; }
   runTool(action, clip);
 });
 
@@ -241,23 +309,28 @@ function runTool(action, clip){
 }
 
 function doSplit(clip){
-  // split at current playhead if it's inside the clip, else at midpoint
   const len = clip.trimOut - clip.trimIn;
-  let splitAt = state.playhead - clip.start;
-  if(splitAt <= 0.15 || splitAt >= len - 0.15){
-    splitAt = len/2;
+  let splitAt = state.playhead - clip.start; // позиция реза внутри клипа, в секундах от начала клипа
+
+  if(splitAt <= 0.1 || splitAt >= len - 0.1){
+    toast('Поставь красную палку внутри клипа, потом жми "Разрезать"');
+    return;
   }
+
+  const GAP = 0.12; // небольшой видимый зазор между получившимися частями, чтобы было видно что их 2
+
   const newClip = Object.assign({}, clip, {
     id: state.nextId++,
-    start: clip.start + splitAt,
+    start: clip.start + splitAt + GAP,
     trimIn: clip.trimIn + splitAt,
     trimOut: clip.trimOut,
   });
   clip.trimOut = clip.trimIn + splitAt;
+
   state.clips.push(newClip);
   state.selectedId = newClip.id;
   render();
-  toast('Клип разрезан ✂️');
+  toast('Готово: было 1 клип — стало 2 ✂️');
 }
 
 function doDuplicate(clip){
